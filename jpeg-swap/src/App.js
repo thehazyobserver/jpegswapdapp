@@ -6,7 +6,7 @@ import EnhancedStonerStaking from "./components/EnhancedStonerStaking";
 import StakeReceipts from "./components/StakeReceipts";
 import PoolFactory from "./components/PoolFactory";
 import styled from "styled-components";
-import config from "../public/config/config.json";
+import config from "./config/config.json";
 
 const AppContainer = styled.div`
   min-height: 100vh;

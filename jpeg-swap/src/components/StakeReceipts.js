@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import { resolveIPFS } from "../utils/helpers";
 import styled from "styled-components";
 import StakeReceiptABI from "../contracts/StakeReceiptABI.json";
-import config from "../../public/config/config.json";
+import config from "../config/config.json";
 
 const Card = styled.div`
   background: #1a1a2e;

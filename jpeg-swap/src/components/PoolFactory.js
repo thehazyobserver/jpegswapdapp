@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import styled from "styled-components";
 import FactoryABI from "../contracts/SwapPoolFactoryABI.json";
-import config from "../../public/config/config.json";
+import config from "../config/config.json";
 
 const Card = styled.div`
   background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);

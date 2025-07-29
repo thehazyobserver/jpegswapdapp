@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import FactoryABI from "../contracts/SwapPoolFactoryABI.json";
 import EnhancedPoolCard from "./EnhancedPoolCard";
-import config from "../../public/config/config.json";
+import config from "../config/config.json";
 import styled from "styled-components";
 
 const Container = styled.div`

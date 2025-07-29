@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import styled from "styled-components";
 import StonerFeePoolABI from "../contracts/StonerFeePoolABI.json";
 import StakeReceiptABI from "../contracts/StakeReceiptABI.json";
-import config from "../../public/config/config.json";
+import config from "../config/config.json";
 
 const Card = styled.div`
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
