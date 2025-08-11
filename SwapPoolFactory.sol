@@ -1,6 +1,6 @@
+// SPDX-License-Identifier: MIT
 
 // File: @openzeppelin/contracts@4.8.3/utils/Context.sol
-
 
 // OpenZeppelin Contracts v4.4.1 (utils/Context.sol)
 
@@ -28,11 +28,9 @@ abstract contract Context {
 
 // File: @openzeppelin/contracts@4.8.3/access/Ownable.sol
 
-
 // OpenZeppelin Contracts (last updated v4.7.0) (access/Ownable.sol)
 
 pragma solidity ^0.8.0;
-
 
 /**
  * @dev Contract module which provides a basic access control mechanism, where
@@ -112,7 +110,6 @@ abstract contract Ownable is Context {
 }
 
 // File: @openzeppelin/contracts@4.8.3/proxy/Proxy.sol
-
 
 // OpenZeppelin Contracts (last updated v4.6.0) (proxy/Proxy.sol)
 
@@ -202,7 +199,6 @@ abstract contract Proxy {
 
 // File: @openzeppelin/contracts@4.8.3/proxy/beacon/IBeacon.sol
 
-
 // OpenZeppelin Contracts v4.4.1 (proxy/beacon/IBeacon.sol)
 
 pragma solidity ^0.8.0;
@@ -220,7 +216,6 @@ interface IBeacon {
 }
 
 // File: @openzeppelin/contracts@4.8.3/interfaces/IERC1967.sol
-
 
 // OpenZeppelin Contracts (last updated v4.8.3) (interfaces/IERC1967.sol)
 
@@ -250,7 +245,6 @@ interface IERC1967 {
 
 // File: @openzeppelin/contracts@4.8.3/interfaces/draft-IERC1822.sol
 
-
 // OpenZeppelin Contracts (last updated v4.5.0) (interfaces/draft-IERC1822.sol)
 
 pragma solidity ^0.8.0;
@@ -272,7 +266,6 @@ interface IERC1822Proxiable {
 }
 
 // File: @openzeppelin/contracts@4.8.3/utils/Address.sol
-
 
 // OpenZeppelin Contracts (last updated v4.8.0) (utils/Address.sol)
 
@@ -520,7 +513,6 @@ library Address {
 
 // File: @openzeppelin/contracts@4.8.3/utils/StorageSlot.sol
 
-
 // OpenZeppelin Contracts (last updated v4.7.0) (utils/StorageSlot.sol)
 
 pragma solidity ^0.8.0;
@@ -611,15 +603,9 @@ library StorageSlot {
 
 // File: @openzeppelin/contracts@4.8.3/proxy/ERC1967/ERC1967Upgrade.sol
 
-
 // OpenZeppelin Contracts (last updated v4.8.3) (proxy/ERC1967/ERC1967Upgrade.sol)
 
 pragma solidity ^0.8.2;
-
-
-
-
-
 
 /**
  * @dev This abstract contract provides getters and event emitting update functions for
@@ -740,7 +726,8 @@ abstract contract ERC1967Upgrade is IERC1967 {
 
     /**
      * @dev The storage slot of the UpgradeableBeacon contract which defines the implementation for this proxy.
-     * This is bytes32(uint256(keccak256('eip1967.proxy.beacon')) - 1)) and is validated in the constructor.
+     * This is bytes32(uint256(keccak256('eip1967.proxy.beacon')) - 1)) and is
+     * validated in the constructor.
      */
     bytes32 internal constant _BEACON_SLOT = 0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50;
 
@@ -784,12 +771,9 @@ abstract contract ERC1967Upgrade is IERC1967 {
 
 // File: @openzeppelin/contracts@4.8.3/proxy/ERC1967/ERC1967Proxy.sol
 
-
 // OpenZeppelin Contracts (last updated v4.7.0) (proxy/ERC1967/ERC1967Proxy.sol)
 
 pragma solidity ^0.8.0;
-
-
 
 /**
  * @dev This contract implements an upgradeable proxy. It is upgradeable because calls are delegated to an
@@ -818,7 +802,6 @@ contract ERC1967Proxy is Proxy, ERC1967Upgrade {
 
 // File: @openzeppelin/contracts@4.8.3/utils/introspection/IERC165.sol
 
-
 // OpenZeppelin Contracts v4.4.1 (utils/introspection/IERC165.sol)
 
 pragma solidity ^0.8.0;
@@ -846,11 +829,9 @@ interface IERC165 {
 
 // File: @openzeppelin/contracts@4.8.3/token/ERC721/IERC721.sol
 
-
 // OpenZeppelin Contracts (last updated v4.8.0) (token/ERC721/IERC721.sol)
 
 pragma solidity ^0.8.0;
-
 
 /**
  * @dev Required interface of an ERC721 compliant contract.
@@ -991,13 +972,36 @@ interface IERC721 is IERC165 {
     function isApprovedForAll(address owner, address operator) external view returns (bool);
 }
 
+// File: @openzeppelin/contracts@4.8.3/security/ReentrancyGuard.sol
+
+// OpenZeppelin Contracts (last updated v4.8.0) (security/ReentrancyGuard.sol)
+
+pragma solidity ^0.8.0;
+
+/**
+ * @dev Contract module that helps prevent reentrant calls to a function.
+ */
+abstract contract ReentrancyGuard {
+    uint256 private constant _NOT_ENTERED = 1;
+    uint256 private constant _ENTERED = 2;
+
+    uint256 private _status;
+
+    constructor() {
+        _status = _NOT_ENTERED;
+    }
+
+    modifier nonReentrant() {
+        require(_status != _ENTERED, "ReentrancyGuard: reentrant call");
+        _status = _ENTERED;
+        _;
+        _status = _NOT_ENTERED;
+    }
+}
+
 // File: SwapPoolFactory.sol
 
-
 pragma solidity ^0.8.19;
-
-
-
 
 interface ISwapPoolNative {
     function initialize(
@@ -1005,26 +1009,39 @@ interface ISwapPoolNative {
         address receiptContract,
         address stonerPool,
         uint256 swapFeeInWei,
-        uint256 stonerShare
+        uint256 stonerShare,
+        address initialOwner              // NEW: Add initialOwner parameter
     ) external;
+    function pause() external;
+    function unpause() external;
 }
 
-contract SwapPoolFactoryNative is Ownable {
+interface ISwapPoolRewards {
+    function earned(address account) external view returns (uint256);
+    function claimRewards() external;
+    function nftCollection() external view returns (address);
+}
+
+contract SwapPoolFactoryNative is Ownable, ReentrancyGuard {
     address public implementation;
     mapping(address => address) public collectionToPool;
     address[] public allPools;
 
-    event PoolCreated(address indexed collection, address pool);
+    event PoolCreated(address indexed collection, address indexed pool, address indexed owner);
+    event PoolDeployed(address indexed newPool, address indexed collection, address indexed deployer);
     event FactoryDeployed(address indexed implementation, address indexed owner);
-    event ImplementationUpdated(address newImplementation);
+    event ImplementationUpdated(address indexed oldImpl, address indexed newImpl);
+    event BatchRewardsClaimed(address indexed user, uint256 poolCount, uint256 totalAmount);
 
     error ZeroAddressNotAllowed();
     error PoolAlreadyExists();
     error InvalidShareRange();
     error InvalidERC721();
+    error InvalidImplementation();
 
     constructor(address _implementation) {
         if (_implementation == address(0)) revert ZeroAddressNotAllowed();
+        if (!Address.isContract(_implementation)) revert InvalidImplementation();
         implementation = _implementation;
         emit FactoryDeployed(_implementation, msg.sender);
     }
@@ -1034,53 +1051,363 @@ contract SwapPoolFactoryNative is Ownable {
         address receiptContract,
         address stonerPool,
         uint256 swapFeeInWei,
-        uint256 stonerShare
+        uint256 stonerShare,
+        address initialOwner                    // NEW: Add initialOwner parameter
     ) external onlyOwner returns (address) {
+        // Input validation
         if (
             nftCollection == address(0) ||
             receiptContract == address(0) ||
-            stonerPool == address(0)
+            stonerPool == address(0) ||
+            initialOwner == address(0)          // NEW: Validate initialOwner
         ) revert ZeroAddressNotAllowed();
 
         if (collectionToPool[nftCollection] != address(0)) revert PoolAlreadyExists();
         if (stonerShare > 100) revert InvalidShareRange();
 
-        // Validate NFT contract interface
-        try IERC721(nftCollection).balanceOf(address(this)) {} catch {
+        // Enhanced ERC721 validation
+        if (!Address.isContract(nftCollection)) revert InvalidERC721();
+        
+        try IERC165(nftCollection).supportsInterface(0x80ac58cd) returns (bool supported) {
+            if (!supported) revert InvalidERC721();
+        } catch {
             revert InvalidERC721();
         }
 
+        // Create proxy with initialization data
         bytes memory initData = abi.encodeWithSelector(
             ISwapPoolNative.initialize.selector,
             nftCollection,
             receiptContract,
             stonerPool,
             swapFeeInWei,
-            stonerShare
+            stonerShare,
+            initialOwner                       // NEW: Pass initialOwner to initialize
         );
 
         ERC1967Proxy proxy = new ERC1967Proxy(implementation, initData);
         address proxyAddress = address(proxy);
 
+        // Update mappings
         collectionToPool[nftCollection] = proxyAddress;
         allPools.push(proxyAddress);
 
-        emit PoolCreated(nftCollection, proxyAddress);
+        emit PoolCreated(nftCollection, proxyAddress, msg.sender);
+        emit PoolDeployed(proxyAddress, nftCollection, msg.sender);
         return proxyAddress;
     }
 
-    function setImplementation(address newImpl) external onlyOwner {
-        if (newImpl == address(0)) revert ZeroAddressNotAllowed();
-        implementation = newImpl;
-        emit ImplementationUpdated(newImpl);
+    // 🎯 BATCH REWARD CLAIMING FUNCTIONS
+
+    /**
+     * @dev Claim rewards from specific pools
+     * @param pools Array of pool addresses to claim from
+     */
+    function batchClaimRewards(address[] calldata pools) external nonReentrant {
+        require(pools.length > 0, "Empty pools array");
+        require(pools.length <= 50, "Too many pools"); // Gas limit protection
+        
+        uint256 totalClaimed = 0;
+        uint256 poolsLength = pools.length; // Gas optimization: cache array length
+        
+        for (uint256 i = 0; i < poolsLength; i++) {
+            // Verify it's a valid pool from this factory
+            try ISwapPoolRewards(pools[i]).nftCollection() returns (address collection) {
+                require(collectionToPool[collection] == pools[i], "Invalid pool");
+            } catch {
+                continue; // Skip invalid pools
+            }
+            
+            try ISwapPoolRewards(pools[i]).earned(msg.sender) returns (uint256 pending) {
+                if (pending > 0) {
+                    try ISwapPoolRewards(pools[i]).claimRewards() {
+                        totalClaimed += pending;
+                    } catch {
+                        // Skip failed claims, continue with others
+                    }
+                }
+            } catch {
+                // Skip pools with errors
+            }
+        }
+        
+        emit BatchRewardsClaimed(msg.sender, pools.length, totalClaimed);
     }
 
-    function registerMe() external {
+    /**
+     * @dev Claim rewards from all pools (with gas limit protection)
+     */
+    function claimAllRewards() external nonReentrant {
+        require(allPools.length > 0, "No pools available");
+        require(allPools.length <= 50, "Too many pools - use paginated version"); // Gas limit protection
+        
+        uint256 totalClaimed = 0;
+        uint256 allPoolsLength = allPools.length; // Gas optimization: cache array length
+        
+        for (uint256 i = 0; i < allPoolsLength; i++) {
+            // Verify it's a valid pool from this factory
+            try ISwapPoolRewards(allPools[i]).nftCollection() returns (address collection) {
+                require(collectionToPool[collection] == allPools[i], "Invalid pool");
+            } catch {
+                continue; // Skip invalid pools
+            }
+            
+            try ISwapPoolRewards(allPools[i]).earned(msg.sender) returns (uint256 pending) {
+                if (pending > 0) {
+                    try ISwapPoolRewards(allPools[i]).claimRewards() {
+                        totalClaimed += pending;
+                    } catch {
+                        // Skip failed claims, continue with others
+                    }
+                }
+            } catch {
+                // Skip pools with errors
+            }
+        }
+        
+        emit BatchRewardsClaimed(msg.sender, allPools.length, totalClaimed);
+    }
+
+    /**
+     * @dev Claim rewards from pools with pagination for scalability
+     * @param startIndex Starting index in allPools array
+     * @param batchSize Number of pools to process (max 20 for safety)
+     */
+    function claimAllRewardsPaginated(uint256 startIndex, uint256 batchSize) 
+        external 
+        nonReentrant 
+        returns (uint256 totalClaimed, uint256 poolsProcessed) 
+    {
+        require(allPools.length > 0, "No pools available");
+        require(batchSize <= 20, "Batch size too large"); // Gas limit protection
+        require(startIndex < allPools.length, "Start index out of bounds");
+        
+        uint256 endIndex = startIndex + batchSize;
+        if (endIndex > allPools.length) {
+            endIndex = allPools.length;
+        }
+        
+        totalClaimed = 0;
+        poolsProcessed = 0;
+        
+        for (uint256 i = startIndex; i < endIndex; i++) {
+            poolsProcessed++;
+            
+            // Verify it's a valid pool from this factory
+            try ISwapPoolRewards(allPools[i]).nftCollection() returns (address collection) {
+                require(collectionToPool[collection] == allPools[i], "Invalid pool");
+            } catch {
+                continue; // Skip invalid pools
+            }
+            
+            try ISwapPoolRewards(allPools[i]).earned(msg.sender) returns (uint256 pending) {
+                if (pending > 0) {
+                    try ISwapPoolRewards(allPools[i]).claimRewards() {
+                        totalClaimed += pending;
+                    } catch {
+                        // Skip failed claims, continue with others
+                    }
+                }
+            } catch {
+                // Skip pools with errors
+            }
+        }
+        
+        emit BatchRewardsClaimed(msg.sender, poolsProcessed, totalClaimed);
+    }
+
+    /**
+     * @dev Get paginated list of pools for frontend integration
+     * @param startIndex Starting index in allPools array
+     * @param batchSize Number of pools to return (max 50)
+     */
+    function getAllPoolsPaginated(uint256 startIndex, uint256 batchSize) 
+        external 
+        view 
+        returns (address[] memory pools, uint256 totalPools) 
+    {
+        require(batchSize <= 50, "Batch size too large");
+        totalPools = allPools.length;
+        
+        if (startIndex >= totalPools) {
+            return (new address[](0), totalPools);
+        }
+        
+        uint256 endIndex = startIndex + batchSize;
+        if (endIndex > totalPools) {
+            endIndex = totalPools;
+        }
+        
+        pools = new address[](endIndex - startIndex);
+        for (uint256 i = startIndex; i < endIndex; i++) {
+            pools[i - startIndex] = allPools[i];
+        }
+    }
+
+    /**
+     * @dev Get user's claimable rewards with pagination
+     * @param user Address to check rewards for
+     * @param startIndex Starting index in allPools array
+     * @param batchSize Number of pools to check (max 20)
+     */
+    function getUserClaimableRewardsPaginated(address user, uint256 startIndex, uint256 batchSize)
+        external
+        view
+        returns (uint256 totalClaimable, address[] memory validPools, uint256[] memory amounts)
+    {
+        require(batchSize <= 20, "Batch size too large");
+        require(startIndex < allPools.length, "Start index out of bounds");
+        
+        uint256 endIndex = startIndex + batchSize;
+        if (endIndex > allPools.length) {
+            endIndex = allPools.length;
+        }
+        
+        validPools = new address[](endIndex - startIndex);
+        amounts = new uint256[](endIndex - startIndex);
+        totalClaimable = 0;
+        uint256 validCount = 0;
+        
+        for (uint256 i = startIndex; i < endIndex; i++) {
+            try ISwapPoolRewards(allPools[i]).earned(user) returns (uint256 pending) {
+                if (pending > 0) {
+                    validPools[validCount] = allPools[i];
+                    amounts[validCount] = pending;
+                    totalClaimable += pending;
+                    validCount++;
+                }
+            } catch {
+                // Skip pools with errors
+            }
+        }
+        
+        // Resize arrays to remove empty slots
+        assembly {
+            mstore(validPools, validCount)
+            mstore(amounts, validCount)
+        }
+    }
+
+    /**
+     * @dev Estimate gas costs for batch operations
+     * @param batchSize Number of pools to process
+     */
+    function estimateBatchGasCosts(uint256 batchSize)
+        external
+        view
+        returns (
+            uint256 estimatedGas,
+            uint256 recommendedBatchSize,
+            uint256 totalBatches,
+            bool needsPagination
+        )
+    {
+        uint256 poolCount = allPools.length;
+        needsPagination = poolCount > 50;
+        
+        // Rough estimates based on typical operations
+        uint256 baseGas = 21000; // Transaction base cost
+        uint256 gasPerPool = 45000; // Estimated gas per pool claim
+        
+        if (batchSize == 0 || batchSize > poolCount) {
+            batchSize = poolCount;
+        }
+        
+        estimatedGas = baseGas + (gasPerPool * batchSize);
+        
+        // Recommend batch size to stay under gas limits
+        uint256 targetGasLimit = 8000000; // Conservative estimate
+        recommendedBatchSize = (targetGasLimit - baseGas) / gasPerPool;
+        if (recommendedBatchSize > 20) recommendedBatchSize = 20; // Safety cap
+        if (recommendedBatchSize > poolCount) recommendedBatchSize = poolCount;
+        
+        totalBatches = (poolCount + recommendedBatchSize - 1) / recommendedBatchSize; // Ceiling division
+    }
+
+    /**
+     * @dev Get user's pending rewards across all pools
+     * @param user User address to check
+     */
+    function getUserPendingRewards(address user) external view returns (
+        uint256 totalPending,
+        address[] memory poolsWithRewards,
+        uint256[] memory pendingAmounts
+    ) {
+        address[] memory validPools = new address[](allPools.length);
+        uint256[] memory amounts = new uint256[](allPools.length);
+        uint256 count = 0;
+        
+        for (uint256 i = 0; i < allPools.length; i++) {
+            try ISwapPoolRewards(allPools[i]).earned(user) returns (uint256 pending) {
+                if (pending > 0) {
+                    validPools[count] = allPools[i];
+                    amounts[count] = pending;
+                    totalPending += pending;
+                    count++;
+                }
+            } catch {
+                // Skip pools with errors
+            }
+        }
+        
+        // Resize arrays to actual count
+        poolsWithRewards = new address[](count);
+        pendingAmounts = new uint256[](count);
+        for (uint256 i = 0; i < count; i++) {
+            poolsWithRewards[i] = validPools[i];
+            pendingAmounts[i] = amounts[i];
+        }
+    }
+
+    /**
+     * @dev Get user's total pending rewards (simple version)
+     * @param user User address to check
+     */
+    function getUserTotalPendingRewards(address user) external view returns (uint256 totalPending) {
+        for (uint256 i = 0; i < allPools.length; i++) {
+            try ISwapPoolRewards(allPools[i]).earned(user) returns (uint256 pending) {
+                totalPending += pending;
+            } catch {
+                // Skip pools with errors
+            }
+        }
+    }
+
+    /**
+     * @dev Check how many pools user has rewards in
+     * @param user User address to check
+     */
+    function getUserActivePoolCount(address user) external view returns (uint256 activeCount) {
+        for (uint256 i = 0; i < allPools.length; i++) {
+            try ISwapPoolRewards(allPools[i]).earned(user) returns (uint256 pending) {
+                if (pending > 0) {
+                    activeCount++;
+                }
+            } catch {
+                // Skip pools with errors
+            }
+        }
+    }
+
+    // 🔧 ADMIN FUNCTIONS
+
+    function setImplementation(address newImpl) external onlyOwner {
+        if (newImpl == address(0)) revert ZeroAddressNotAllowed();
+        if (!Address.isContract(newImpl)) revert InvalidImplementation();
+        
+        address oldImpl = implementation;
+        implementation = newImpl;
+        emit ImplementationUpdated(oldImpl, newImpl);
+    }
+
+    function registerMe() external onlyOwner {
         (bool _success,) = address(0xDC2B0D2Dd2b7759D97D50db4eabDC36973110830).call(
             abi.encodeWithSignature("selfRegister(uint256)", 92)
         );
         require(_success, "FeeM registration failed");
     }
+
+    // 📊 VIEW FUNCTIONS
 
     function getPool(address collection) external view returns (address) {
         return collectionToPool[collection];
@@ -1088,5 +1415,538 @@ contract SwapPoolFactoryNative is Ownable {
 
     function getAllPools() external view returns (address[] memory) {
         return allPools;
+    }
+
+    function getPoolCount() external view returns (uint256) {
+        return allPools.length;
+    }
+
+    function isPoolCreated(address collection) external view returns (bool) {
+        return collectionToPool[collection] != address(0);
+    }
+
+    /**
+     * @dev Get comprehensive factory statistics
+     */
+    function getFactoryStats() external view returns (
+        uint256 totalPools,
+        address currentImplementation,
+        address factoryOwner
+    ) {
+        return (
+            allPools.length,
+            implementation,
+            owner()
+        );
+    }
+
+    /**
+     * @dev Get detailed analytics across all pools for dashboard
+     */
+    function getGlobalAnalytics() external view returns (
+        uint256 totalValueLocked,      // Total NFTs across all pools
+        uint256 totalRewardsDistributed,
+        uint256 totalActiveStakers,
+        uint256 mostActivePool,        // Index of most active pool
+        uint256 highestAPYPool         // Index of highest APY pool
+    ) {
+        uint256 totalNFTs = 0;
+        uint256 totalRewards = 0;
+        uint256 totalStakers = 0;
+        uint256 maxNFTs = 0;
+        uint256 mostActive = 0;
+        uint256 highestAPY = 0;
+
+        for (uint256 i = 0; i < allPools.length; i++) {
+            try ISwapPoolRewards(allPools[i]).nftCollection() returns (address collection) {
+                if (collectionToPool[collection] == allPools[i]) {
+                    // Get pool stats (would need extended interface)
+                    try IERC721(collection).balanceOf(allPools[i]) returns (uint256 poolNFTs) {
+                        totalNFTs += poolNFTs;
+                        if (poolNFTs > maxNFTs) {
+                            maxNFTs = poolNFTs;
+                            mostActive = i;
+                        }
+                    } catch {}
+                }
+            } catch {}
+        }
+
+        return (totalNFTs, totalRewards, totalStakers, mostActive, highestAPY);
+    }
+
+    /**
+     * @dev Get trending pools for homepage display
+     */
+    function getTrendingPools(uint256 limit) external view returns (
+        address[] memory pools,
+        address[] memory collections,
+        uint256[] memory tvl,           // Total Value Locked
+        uint256[] memory volume24h,     // 24h volume
+        uint256[] memory apy           // Current APY
+    ) {
+        uint256 poolCount = allPools.length;
+        uint256 resultCount = limit > poolCount ? poolCount : limit;
+        
+        pools = new address[](resultCount);
+        collections = new address[](resultCount);
+        tvl = new uint256[](resultCount);
+        volume24h = new uint256[](resultCount);
+        apy = new uint256[](resultCount);
+        
+        for (uint256 i = 0; i < resultCount; i++) {
+            pools[i] = allPools[i];
+            try ISwapPoolRewards(allPools[i]).nftCollection() returns (address collection) {
+                collections[i] = collection;
+                try IERC721(collection).balanceOf(allPools[i]) returns (uint256 balance) {
+                    tvl[i] = balance;
+                } catch {}
+            } catch {}
+            // volume24h and apy would require additional tracking
+        }
+    }
+
+    // 🚨 EMERGENCY FUNCTIONS
+    function emergencyPauseAllPools() external onlyOwner {
+        for (uint256 i = 0; i < allPools.length; i++) {
+            try ISwapPoolNative(allPools[i]).pause() {} catch {}
+        }
+    }
+
+    function emergencyUnpauseAllPools() external onlyOwner {
+        for (uint256 i = 0; i < allPools.length; i++) {
+            try ISwapPoolNative(allPools[i]).unpause() {} catch {}
+        }
+    }
+
+    function updateImplementation(address newImplementation) external onlyOwner {
+        if (newImplementation == address(0)) revert ZeroAddressNotAllowed();
+        if (!Address.isContract(newImplementation)) revert InvalidImplementation();
+        
+        address oldImpl = implementation;
+        implementation = newImplementation;
+        emit ImplementationUpdated(oldImpl, newImplementation);
+    }
+
+    // 🎯 ENHANCED UI/UX FUNCTIONS FOR BETTER FRONTEND INTEGRATION
+
+    /**
+     * @dev Get comprehensive dashboard data for factory overview
+     */
+    function getFactoryDashboard() external view returns (
+        uint256 totalPools,
+        uint256 totalCollections,
+        uint256 totalTVL,
+        uint256 averagePoolSize,
+        uint256 largestPoolTVL,
+        address mostActivePool,
+        uint256 factoryHealthScore
+    ) {
+        totalPools = allPools.length;
+        totalCollections = totalPools; // 1:1 mapping
+        
+        uint256 poolSizeSum = 0;
+        uint256 maxPoolSize = 0;
+        address largestPool = address(0);
+        uint256 healthyPools = 0;
+        
+        for (uint256 i = 0; i < allPools.length; i++) {
+            try ISwapPoolRewards(allPools[i]).nftCollection() returns (address collection) {
+                if (collectionToPool[collection] == allPools[i]) {
+                    try IERC721(collection).balanceOf(allPools[i]) returns (uint256 balance) {
+                        poolSizeSum += balance;
+                        totalTVL += balance;
+                        if (balance > maxPoolSize) {
+                            maxPoolSize = balance;
+                            largestPool = allPools[i];
+                        }
+                        if (balance >= 10) healthyPools++; // Consider pools with 10+ NFTs healthy
+                    } catch {}
+                }
+            } catch {}
+        }
+        
+        averagePoolSize = totalPools > 0 ? poolSizeSum / totalPools : 0;
+        largestPoolTVL = maxPoolSize;
+        mostActivePool = largestPool;
+        factoryHealthScore = totalPools > 0 ? (healthyPools * 100) / totalPools : 0;
+    }
+
+    /**
+     * @dev Get pool leaderboard for competitive display
+     */
+    function getPoolLeaderboard(uint256 limit) external view returns (
+        address[] memory pools,
+        address[] memory collections,
+        uint256[] memory tvlRanks,
+        uint256[] memory volumeRanks,
+        uint256[] memory stakingRanks,
+        string[] memory collectionNames
+    ) {
+        uint256 resultCount = limit > allPools.length ? allPools.length : limit;
+        
+        pools = new address[](resultCount);
+        collections = new address[](resultCount);
+        tvlRanks = new uint256[](resultCount);
+        volumeRanks = new uint256[](resultCount);
+        stakingRanks = new uint256[](resultCount);
+        collectionNames = new string[](resultCount);
+        
+        // Simple implementation - in production would sort by actual metrics
+        for (uint256 i = 0; i < resultCount; i++) {
+            pools[i] = allPools[i];
+            try ISwapPoolRewards(allPools[i]).nftCollection() returns (address collection) {
+                collections[i] = collection;
+                try IERC721(collection).balanceOf(allPools[i]) returns (uint256 balance) {
+                    tvlRanks[i] = balance;
+                } catch {}
+                // Would implement name resolution in production
+                collectionNames[i] = "NFT Collection";
+            } catch {}
+            volumeRanks[i] = i + 1; // Placeholder ranking
+            stakingRanks[i] = i + 1; // Placeholder ranking
+        }
+    }
+
+    /**
+     * @dev Get user's portfolio across all pools
+     */
+    function getUserFactoryPortfolio(address user) external view returns (
+        uint256 totalStakedPools,
+        uint256 totalPendingRewards,
+        uint256 totalLifetimeRewards,
+        address[] memory activePools,
+        uint256[] memory stakedPerPool,
+        uint256[] memory pendingPerPool,
+        bool hasClaimableRewards
+    ) {
+        uint256 activeCount = 0;
+        uint256 totalPending = 0;
+        
+        // First pass: count active pools and calculate totals
+        for (uint256 i = 0; i < allPools.length; i++) {
+            try ISwapPoolRewards(allPools[i]).earned(user) returns (uint256 pending) {
+                if (pending > 0) {
+                    activeCount++;
+                    totalPending += pending;
+                }
+            } catch {}
+        }
+        
+        // Initialize arrays
+        activePools = new address[](activeCount);
+        stakedPerPool = new uint256[](activeCount);
+        pendingPerPool = new uint256[](activeCount);
+        
+        // Second pass: populate arrays
+        uint256 index = 0;
+        for (uint256 i = 0; i < allPools.length; i++) {
+            try ISwapPoolRewards(allPools[i]).earned(user) returns (uint256 pending) {
+                if (pending > 0) {
+                    activePools[index] = allPools[i];
+                    pendingPerPool[index] = pending;
+                    stakedPerPool[index] = 0; // Would need extended interface to get staked count
+                    index++;
+                }
+            } catch {}
+        }
+        
+        totalStakedPools = activeCount;
+        totalPendingRewards = totalPending;
+        totalLifetimeRewards = 0; // Would need tracking
+        hasClaimableRewards = totalPending > 0;
+    }
+
+    /**
+     * @dev Get optimized batch claiming recommendations
+     */
+    function getBatchClaimingRecommendations(address user) external view returns (
+        bool shouldUseBatch,
+        uint256 recommendedBatchSize,
+        uint256 estimatedGasSavings,
+        uint256 totalClaimableAmount,
+        address[] memory priorityPools,
+        string memory recommendation
+    ) {
+        uint256 poolsWithRewards = 0;
+        uint256 totalRewards = 0;
+        
+        // Count pools with rewards
+        for (uint256 i = 0; i < allPools.length; i++) {
+            try ISwapPoolRewards(allPools[i]).earned(user) returns (uint256 pending) {
+                if (pending > 0) {
+                    poolsWithRewards++;
+                    totalRewards += pending;
+                }
+            } catch {}
+        }
+        
+        shouldUseBatch = poolsWithRewards > 2;
+        recommendedBatchSize = poolsWithRewards > 20 ? 20 : poolsWithRewards;
+        estimatedGasSavings = poolsWithRewards > 1 ? (poolsWithRewards - 1) * 25000 : 0; // Rough estimate
+        totalClaimableAmount = totalRewards;
+        
+        if (poolsWithRewards == 0) {
+            recommendation = "No rewards to claim";
+        } else if (poolsWithRewards == 1) {
+            recommendation = "Single pool claim recommended";
+        } else if (poolsWithRewards <= 5) {
+            recommendation = "Small batch claim (all pools)";
+        } else if (poolsWithRewards <= 20) {
+            recommendation = "Batch claim all pools";
+        } else {
+            recommendation = "Use paginated batch claiming";
+        }
+        
+        // Get priority pools (highest rewards first)
+        priorityPools = new address[](recommendedBatchSize);
+        // In production, would sort by reward amount
+    }
+
+    /**
+     * @dev Get factory health metrics for monitoring
+     */
+    function getFactoryHealthMetrics() external view returns (
+        uint256 healthScore,
+        bool isHealthy,
+        uint256 activePoolsPercent,
+        uint256 averagePoolUtilization,
+        string memory healthStatus,
+        string[] memory warnings
+    ) {
+        uint256 activePools = 0;
+        uint256 totalUtilization = 0;
+        uint256 warningCount = 0;
+        
+        warnings = new string[](5); // Max 5 warnings
+        
+        for (uint256 i = 0; i < allPools.length; i++) {
+            try ISwapPoolRewards(allPools[i]).nftCollection() returns (address collection) {
+                if (collectionToPool[collection] == allPools[i]) {
+                    try IERC721(collection).balanceOf(allPools[i]) returns (uint256 balance) {
+                        if (balance > 0) {
+                            activePools++;
+                            totalUtilization += balance;
+                        }
+                    } catch {}
+                }
+            } catch {}
+        }
+        
+        activePoolsPercent = allPools.length > 0 ? (activePools * 100) / allPools.length : 0;
+        averagePoolUtilization = activePools > 0 ? totalUtilization / activePools : 0;
+        
+        // Calculate health score
+        healthScore = 0;
+        if (allPools.length > 0) healthScore += 20;
+        if (activePoolsPercent >= 50) healthScore += 30;
+        if (averagePoolUtilization >= 10) healthScore += 30;
+        if (allPools.length >= 5) healthScore += 20;
+        
+        isHealthy = healthScore >= 60;
+        
+        if (healthScore >= 80) {
+            healthStatus = "Excellent";
+        } else if (healthScore >= 60) {
+            healthStatus = "Good";
+        } else if (healthScore >= 40) {
+            healthStatus = "Fair";
+        } else {
+            healthStatus = "Poor";
+        }
+        
+        // Add warnings
+        if (allPools.length == 0) {
+            warnings[warningCount] = "No pools created";
+            warningCount++;
+        }
+        if (activePoolsPercent < 50) {
+            warnings[warningCount] = "Less than 50% pools are active";
+            warningCount++;
+        }
+        if (averagePoolUtilization < 5) {
+            warnings[warningCount] = "Low average pool utilization";
+            warningCount++;
+        }
+        
+        // Resize warnings array
+        assembly {
+            mstore(warnings, warningCount)
+        }
+    }
+
+    /**
+     * @dev Get comprehensive collection analytics
+     */
+    function getCollectionAnalytics(address collection) external view returns (
+        bool hasPool,
+        address poolAddress,
+        uint256 totalStaked,
+        uint256 totalLiquidity,
+        uint256 totalRewardsDistributed,
+        uint256 currentAPY,
+        uint256 uniqueStakers,
+        bool poolIsHealthy
+    ) {
+        hasPool = collectionToPool[collection] != address(0);
+        poolAddress = collectionToPool[collection];
+        
+        if (hasPool) {
+            try IERC721(collection).balanceOf(poolAddress) returns (uint256 balance) {
+                totalLiquidity = balance;
+                poolIsHealthy = balance >= 10;
+            } catch {}
+            
+            // Additional metrics would require extended pool interface
+            totalStaked = 0; // Would need pool query
+            totalRewardsDistributed = 0; // Would need pool query
+            currentAPY = 0; // Would need pool query
+            uniqueStakers = 0; // Would need pool query
+        }
+    }
+
+    /**
+     * @dev Get gas optimization recommendations
+     */
+    function getGasOptimizationTips(address user) external view returns (
+        string[] memory tips,
+        uint256[] memory potentialSavings,
+        bool[] memory highPriority
+    ) {
+        uint256 userPoolCount = this.getUserActivePoolCount(user);
+        
+        tips = new string[](3);
+        potentialSavings = new uint256[](3);
+        highPriority = new bool[](3);
+        
+        uint256 tipCount = 0;
+        
+        if (userPoolCount > 3) {
+            tips[tipCount] = "Use batch claiming to save gas";
+            potentialSavings[tipCount] = (userPoolCount - 1) * 25000; // Estimated savings
+            highPriority[tipCount] = true;
+            tipCount++;
+        }
+        
+        if (userPoolCount > 20) {
+            tips[tipCount] = "Use paginated batch claiming for large portfolios";
+            potentialSavings[tipCount] = 100000; // Estimated savings
+            highPriority[tipCount] = true;
+            tipCount++;
+        }
+        
+        if (userPoolCount > 0) {
+            tips[tipCount] = "Claim rewards during low network congestion";
+            potentialSavings[tipCount] = 50000; // Estimated savings from timing
+            highPriority[tipCount] = false;
+            tipCount++;
+        }
+        
+        // Resize arrays to actual count
+        assembly {
+            mstore(tips, tipCount)
+            mstore(potentialSavings, tipCount)
+            mstore(highPriority, tipCount)
+        }
+    }
+
+    /**
+     * @dev Preview batch operations before execution
+     */
+    function previewBatchClaim(address user, address[] calldata targetPools) external view returns (
+        bool canExecute,
+        uint256 totalRewards,
+        uint256 estimatedGas,
+        uint256 validPoolCount,
+        bool[] memory poolValidity,
+        string memory statusMessage
+    ) {
+        poolValidity = new bool[](targetPools.length);
+        totalRewards = 0;
+        validPoolCount = 0;
+        canExecute = true;
+        statusMessage = "Ready to execute";
+        
+        if (targetPools.length == 0) {
+            canExecute = false;
+            statusMessage = "No pools specified";
+            estimatedGas = 0;
+            return (canExecute, totalRewards, estimatedGas, validPoolCount, poolValidity, statusMessage);
+        }
+        
+        if (targetPools.length > 50) {
+            canExecute = false;
+            statusMessage = "Too many pools (max 50)";
+            estimatedGas = 0;
+            return (canExecute, totalRewards, estimatedGas, validPoolCount, poolValidity, statusMessage);
+        }
+        
+        uint256 targetPoolsLength = targetPools.length; // Gas optimization: cache array length
+        for (uint256 i = 0; i < targetPoolsLength; i++) {
+            bool isValid = false;
+            
+            try ISwapPoolRewards(targetPools[i]).nftCollection() returns (address collection) {
+                if (collectionToPool[collection] == targetPools[i]) {
+                    isValid = true;
+                    try ISwapPoolRewards(targetPools[i]).earned(user) returns (uint256 pending) {
+                        if (pending > 0) {
+                            totalRewards += pending;
+                        }
+                    } catch {}
+                }
+            } catch {}
+            
+            poolValidity[i] = isValid;
+            if (isValid) validPoolCount++;
+        }
+        
+        estimatedGas = 21000 + (validPoolCount * 45000); // Base + per pool estimate
+        
+        if (validPoolCount == 0) {
+            canExecute = false;
+            statusMessage = "No valid pools with rewards";
+        } else if (totalRewards == 0) {
+            statusMessage = "No rewards to claim";
+        } else {
+            statusMessage = "Ready to claim rewards";
+        }
+    }
+
+    /**
+     * @dev Get real-time factory statistics for live dashboards
+     */
+    function getLiveFactoryStats() external view returns (
+        uint256 totalPools,
+        uint256 totalTVL,
+        uint256 last24hVolume,
+        uint256 totalUniqueUsers,
+        uint256 averagePoolAPY,
+        uint256 factoryUptime,
+        bool systemHealthy
+    ) {
+        totalPools = allPools.length;
+        
+        uint256 tvlSum = 0;
+        uint256 healthyPools = 0;
+        
+        for (uint256 i = 0; i < allPools.length; i++) {
+            try ISwapPoolRewards(allPools[i]).nftCollection() returns (address collection) {
+                if (collectionToPool[collection] == allPools[i]) {
+                    try IERC721(collection).balanceOf(allPools[i]) returns (uint256 balance) {
+                        tvlSum += balance;
+                        if (balance >= 5) healthyPools++;
+                    } catch {}
+                }
+            } catch {}
+        }
+        
+        totalTVL = tvlSum;
+        systemHealthy = totalPools > 0 && (healthyPools * 100 / totalPools) >= 50;
+        
+        // These would need additional tracking in production
+        last24hVolume = 0;
+        totalUniqueUsers = 0;
+        averagePoolAPY = 0;
+        factoryUptime = 100; // Placeholder percentage
     }
 }

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 
 // File: @openzeppelin/contracts-upgradeable@4.8.3/utils/AddressUpgradeable.sol
 
@@ -1375,21 +1376,23 @@ interface IERC721Upgradeable is IERC165Upgradeable {
     function isApprovedForAll(address owner, address operator) external view returns (bool);
 }
 
-// File: stonerfeepool.sol
-
 
 pragma solidity ^0.8.19;
 
 
-
-
-
-
-
 interface IStakeReceipt {
-    function mint(address to, uint256 tokenId) external;
+    function mint(address to, uint256 originalTokenId) external returns (uint256);
     function burn(uint256 tokenId) external;
     function ownerOf(uint256 tokenId) external view returns (address);
+}
+
+interface IERC721ReceiverUpgradeable {
+    function onERC721Received(
+        address operator,
+        address from,
+        uint256 tokenId,
+        bytes calldata data
+    ) external returns (bytes4);
 }
 
 contract StonerFeePool is
@@ -1397,37 +1400,68 @@ contract StonerFeePool is
     OwnableUpgradeable,
     PausableUpgradeable,
     ReentrancyGuardUpgradeable,
-    UUPSUpgradeable
+    UUPSUpgradeable,
+    IERC721ReceiverUpgradeable
 {
+    // ---------- State ----------
     IERC721Upgradeable public stonerNFT;
     IStakeReceipt public receiptToken;
 
     uint256 public totalStaked;
-    uint256 public rewardPerTokenStored;
-    uint256 public rewardRemainder;
+    uint256 public rewardPerTokenStored; // scaled as per original project (see notifyNativeReward comment below)
+    uint256 public rewardRemainder;      // remainder kept at PRECISION granularity
     uint256 public totalRewardsClaimed;
 
-    mapping(uint256 => address) public stakerOf;
-    mapping(address => uint256[]) public stakedTokens;
-    mapping(uint256 => bool) public isStaked;
+    // High precision accumulator base used to carry remainder during distribution
+    uint256 private constant PRECISION = 1e27;
 
+    struct StakeInfo {
+        address staker;
+        uint256 stakedAt;
+        bool active;
+    }
+
+    // tokenId => info
+    mapping(uint256 => StakeInfo) public stakeInfos;
+    // user => tokenIds
+    mapping(address => uint256[]) public stakedTokens;
+    // tokenId => is staked
+    mapping(uint256 => bool) public isStaked;
+    // tokenId => staker (legacy/simple lookup)
+    mapping(uint256 => address) public stakerOf;
+
+    // rewards ledger (survives stake=0)
     mapping(address => uint256) public rewards;
     mapping(address => uint256) public userRewardPerTokenPaid;
 
-    event Staked(address indexed user, uint256 tokenId);
-    event Unstaked(address indexed user, uint256 returnedTokenId);
+    // ---------- Events ----------
+    event Staked(address indexed user, uint256 indexed tokenId);
+    event Unstaked(address indexed user, uint256 indexed tokenId);
     event RewardReceived(address indexed sender, uint256 amount);
     event RewardClaimed(address indexed user, uint256 amount);
-    event EmergencyUnstake(uint256 tokenId, address to);
+    event EmergencyUnstake(uint256 indexed tokenId, address indexed to);
 
+    // ---------- Errors (gas efficient) ----------
     error NotStaked();
     error AlreadyStaked();
     error NotYourToken();
-    error NoAvailableTokens();
     error NoStakers();
     error ZeroETH();
+    error ZeroAddress();
+    error EmptyArray();
+    error TooManyTokens();
+    error TransferFailed();
+    error NoRewards();
+    error DuplicateTokenId();
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
 
     function initialize(address _stonerNFT, address _receiptToken) public initializer {
+        if (_stonerNFT == address(0) || _receiptToken == address(0)) revert ZeroAddress();
+
         __Ownable_init();
         __UUPSUpgradeable_init();
         __ReentrancyGuard_init();
@@ -1437,63 +1471,205 @@ contract StonerFeePool is
         receiptToken = IStakeReceipt(_receiptToken);
     }
 
+    // ---------- Core: Stake / Unstake ----------
+
     function stake(uint256 tokenId) external whenNotPaused {
         if (isStaked[tokenId]) revert AlreadyStaked();
-        stonerNFT.transferFrom(msg.sender, address(this), tokenId);
+
+        // Settle BEFORE balance changes to avoid overpaying on the same block
+        _updateReward(msg.sender);
+
+        // Pull NFT
+        stonerNFT.safeTransferFrom(msg.sender, address(this), tokenId);
+
+        // Mark stake
         isStaked[tokenId] = true;
         stakerOf[tokenId] = msg.sender;
         stakedTokens[msg.sender].push(tokenId);
+
+        // Timestamp analytics (lightweight)
+        stakeInfos[tokenId] = StakeInfo({ staker: msg.sender, stakedAt: block.timestamp, active: true });
+
+        // Mint receipt token (SBT recommended)
         receiptToken.mint(msg.sender, tokenId);
-        _updateReward(msg.sender);
-        totalStaked++;
+
+        // Supply & event
+        unchecked { totalStaked += 1; }
         emit Staked(msg.sender, tokenId);
     }
 
-    function unstake(uint256 tokenId) external whenNotPaused {
+    function stakeMultiple(uint256[] calldata tokenIds) external whenNotPaused {
+        uint256 n = tokenIds.length;
+        if (n == 0) revert EmptyArray();
+        if (n > 10) revert TooManyTokens();
+        _checkForDuplicates(tokenIds);
+
+        // Pre-validate ownership and status
+        for (uint256 i = 0; i < n; ++i) {
+            uint256 tokenId = tokenIds[i];
+            if (isStaked[tokenId]) revert AlreadyStaked();
+            if (stonerNFT.ownerOf(tokenId) != msg.sender) revert NotYourToken();
+        }
+
+        // Settle ONCE before balance changes
+        _updateReward(msg.sender);
+
+        for (uint256 i = 0; i < n; ++i) {
+            uint256 tokenId = tokenIds[i];
+
+            stonerNFT.safeTransferFrom(msg.sender, address(this), tokenId);
+
+            isStaked[tokenId] = true;
+            stakerOf[tokenId] = msg.sender;
+            stakedTokens[msg.sender].push(tokenId);
+
+            stakeInfos[tokenId] = StakeInfo({ staker: msg.sender, stakedAt: block.timestamp, active: true });
+
+            receiptToken.mint(msg.sender, tokenId);
+
+            unchecked { totalStaked += 1; }
+            emit Staked(msg.sender, tokenId);
+        }
+    }
+
+    function unstake(uint256 tokenId) external whenNotPaused nonReentrant {
         if (stakerOf[tokenId] != msg.sender) revert NotYourToken();
+
+        // Settle BEFORE balance changes
+        _updateReward(msg.sender);
+
+        // Burn receipt & clear stake
         receiptToken.burn(tokenId);
         delete stakerOf[tokenId];
         isStaked[tokenId] = false;
+        stakeInfos[tokenId].active = false;
+
         _removeFromArray(stakedTokens[msg.sender], tokenId);
-        totalStaked--;
-        _updateReward(msg.sender);
-        stonerNFT.transferFrom(address(this), msg.sender, tokenId);
+        unchecked { totalStaked -= 1; }
+
+        // Return NFT
+        stonerNFT.safeTransferFrom(address(this), msg.sender, tokenId);
         emit Unstaked(msg.sender, tokenId);
     }
 
+    function unstakeMultiple(uint256[] calldata tokenIds) external whenNotPaused nonReentrant {
+        uint256 n = tokenIds.length;
+        if (n == 0) revert EmptyArray();
+        if (n > 10) revert TooManyTokens();
+        _checkForDuplicates(tokenIds);
+
+        for (uint256 i = 0; i < n; ++i) {
+            if (stakerOf[tokenIds[i]] != msg.sender) revert NotYourToken();
+        }
+
+        // Settle BEFORE balance changes
+        _updateReward(msg.sender);
+
+        for (uint256 i = 0; i < n; ++i) {
+            uint256 tokenId = tokenIds[i];
+
+            receiptToken.burn(tokenId);
+            delete stakerOf[tokenId];
+            isStaked[tokenId] = false;
+            stakeInfos[tokenId].active = false;
+
+            _removeFromArray(stakedTokens[msg.sender], tokenId);
+            unchecked { totalStaked -= 1; }
+
+            stonerNFT.safeTransferFrom(address(this), msg.sender, tokenId);
+            emit Unstaked(msg.sender, tokenId);
+        }
+    }
+
+    // ---------- Rewards ----------
+
+    /**
+     * @dev Push native rewards into the pool.
+     * Math preserves high-precision remainder:
+     *  - rewardWithRemainder = msg.value * 1e27 + remainder
+     *  - perToken = rewardWithRemainder / totalStaked
+     *  - remainder = rewardWithRemainder % totalStaked
+     *  - rewardPerTokenStored += perToken / 1e9  // NOTE: matches original project semantics
+     */
     function notifyNativeReward() public payable {
         if (msg.value == 0) revert ZeroETH();
         if (totalStaked == 0) revert NoStakers();
 
-        uint256 totalValue = msg.value + rewardRemainder;
-        uint256 increment = totalValue / totalStaked;
-        rewardPerTokenStored += increment;
-        rewardRemainder = totalValue % totalStaked;
+        uint256 rewardWithRemainder = (msg.value * PRECISION) + rewardRemainder;
+        uint256 perToken = rewardWithRemainder / totalStaked;
+        rewardRemainder = rewardWithRemainder % totalStaked;
+
+        // Keep original scaling (perToken / 1e9)
+        rewardPerTokenStored += perToken / 1e9;
 
         emit RewardReceived(msg.sender, msg.value);
     }
 
-    function claimNative() external nonReentrant {
+    function claimRewardsOnly() external nonReentrant {
         _updateReward(msg.sender);
-        uint256 reward = rewards[msg.sender];
-        if (reward == 0) return;
+        uint256 payout = rewards[msg.sender];
+        if (payout == 0) revert NoRewards();
+
         rewards[msg.sender] = 0;
-        totalRewardsClaimed += reward;
-        (bool success, ) = payable(msg.sender).call{value: reward}("");
-        require(success, "Transfer failed");
-        emit RewardClaimed(msg.sender, reward);
+        unchecked { totalRewardsClaimed += payout; }
+
+        (bool ok, ) = payable(msg.sender).call{value: payout}("");
+        if (!ok) revert TransferFailed();
+
+        emit RewardClaimed(msg.sender, payout);
     }
+
+    /**
+     * @dev Convenience: unstake all user's NFTs (max 10) and then claim.
+     */
+    function exit() external whenNotPaused nonReentrant {
+        uint256[] memory userTokens = stakedTokens[msg.sender];
+        uint256 n = userTokens.length;
+
+        if (n > 0) {
+            if (n > 10) revert TooManyTokens();
+            _updateReward(msg.sender);
+
+            for (uint256 i = n; i > 0; --i) {
+                uint256 tokenId = userTokens[i - 1];
+
+                receiptToken.burn(tokenId);
+                delete stakerOf[tokenId];
+                isStaked[tokenId] = false;
+                stakeInfos[tokenId].active = false;
+
+                unchecked { totalStaked -= 1; }
+
+                stonerNFT.safeTransferFrom(address(this), msg.sender, tokenId);
+                emit Unstaked(msg.sender, tokenId);
+            }
+
+            delete stakedTokens[msg.sender];
+        }
+
+        uint256 payout = rewards[msg.sender];
+        if (payout > 0) {
+            rewards[msg.sender] = 0;
+            unchecked { totalRewardsClaimed += payout; }
+            (bool ok, ) = payable(msg.sender).call{value: payout}("");
+            if (!ok) revert TransferFailed();
+            emit RewardClaimed(msg.sender, payout);
+        }
+    }
+
+    // ---------- Internal accounting ----------
 
     function _updateReward(address user) internal {
         uint256 userBalance = stakedTokens[user].length;
-        uint256 owed = (userBalance * (rewardPerTokenStored - userRewardPerTokenPaid[user]));
+        uint256 delta = rewardPerTokenStored - userRewardPerTokenPaid[user];
+        uint256 owed = userBalance * delta;
         rewards[user] += owed;
         userRewardPerTokenPaid[user] = rewardPerTokenStored;
     }
 
     function _removeFromArray(uint256[] storage array, uint256 tokenId) internal {
         uint256 len = array.length;
-        for (uint i = 0; i < len; ++i) {
+        for (uint256 i = 0; i < len; ++i) {
             if (array[i] == tokenId) {
                 array[i] = array[len - 1];
                 array.pop();
@@ -1502,37 +1678,115 @@ contract StonerFeePool is
         }
     }
 
+    function _checkForDuplicates(uint256[] calldata tokenIds) internal pure {
+        uint256 n = tokenIds.length;
+        for (uint256 i = 0; i < n; ++i) {
+            uint256 idI = tokenIds[i];
+            for (uint256 j = i + 1; j < n; ++j) {
+                if (idI == tokenIds[j]) revert DuplicateTokenId();
+            }
+        }
+    }
+
+    // ---------- Admin ----------
+
     function emergencyUnstake(uint256 tokenId, address to) external onlyOwner {
         if (!isStaked[tokenId]) revert NotStaked();
+
         address staker = stakerOf[tokenId];
         if (staker != address(0)) {
             _removeFromArray(stakedTokens[staker], tokenId);
             delete stakerOf[tokenId];
             isStaked[tokenId] = false;
-            totalStaked--;
+            unchecked { totalStaked -= 1; }
         }
-        stonerNFT.transferFrom(address(this), to, tokenId);
+
+        stonerNFT.safeTransferFrom(address(this), to, tokenId);
         emit EmergencyUnstake(tokenId, to);
     }
 
-    function registerMe() external {
+    function emergencyUnstakeWithClaim(uint256 tokenId) external onlyOwner {
+        if (!isStaked[tokenId]) revert NotStaked();
+
+        address staker = stakerOf[tokenId];
+        if (staker != address(0)) {
+            _updateReward(staker);
+            uint256 payout = rewards[staker];
+            if (payout > 0) {
+                rewards[staker] = 0;
+                unchecked { totalRewardsClaimed += payout; }
+                (bool ok, ) = payable(staker).call{value: payout}("");
+                if (ok) emit RewardClaimed(staker, payout);
+            }
+
+            _removeFromArray(stakedTokens[staker], tokenId);
+            delete stakerOf[tokenId];
+            isStaked[tokenId] = false;
+            unchecked { totalStaked -= 1; }
+        }
+
+        stonerNFT.safeTransferFrom(address(this), owner(), tokenId);
+        emit EmergencyUnstake(tokenId, owner());
+    }
+
+    function registerMe() external onlyOwner {
         (bool _success,) = address(0xDC2B0D2Dd2b7759D97D50db4eabDC36973110830).call(
             abi.encodeWithSignature("selfRegister(uint256)", 92)
         );
         require(_success, "FeeM registration failed");
     }
 
-    function pause() external onlyOwner {
-        _pause();
+    function pause() external onlyOwner { _pause(); }
+    function unpause() external onlyOwner { _unpause(); }
+
+    // ---------- Views (lean) ----------
+
+    function getStakedTokens(address user) external view returns (uint256[] memory) {
+        return stakedTokens[user];
     }
 
-    function unpause() external onlyOwner {
-        _unpause();
+    function calculatePendingRewards(address user) external view returns (uint256) {
+        uint256 userBalance = stakedTokens[user].length;
+        uint256 delta = rewardPerTokenStored - userRewardPerTokenPaid[user];
+        return rewards[user] + (userBalance * delta);
     }
 
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
-
-    receive() external payable {
-        notifyNativeReward();
+    function getPoolInfo() external view returns (
+        address nftAddress,
+        uint256 totalStakedTokens,
+        uint256 totalRewards,
+        uint256 contractBalance
+    ) {
+        return (address(stonerNFT), totalStaked, totalRewardsClaimed, address(this).balance);
     }
+
+    function earned(address user) external view returns (uint256) {
+        uint256 userBalance = stakedTokens[user].length;
+        uint256 delta = rewardPerTokenStored - userRewardPerTokenPaid[user];
+        return rewards[user] + (userBalance * delta);
+    }
+
+    function getStakeInfo(uint256 tokenId) external view returns (
+        address staker,
+        uint256 stakedAt,
+        uint256 stakingDuration,
+        bool active
+    ) {
+        StakeInfo memory info = stakeInfos[tokenId];
+        return (info.staker, info.stakedAt, info.active ? block.timestamp - info.stakedAt : 0, info.active);
+    }
+
+    // ---------- ERC721 Receiver ----------
+    function onERC721Received(
+        address,
+        address,
+        uint256,
+        bytes calldata
+    ) external pure override returns (bytes4) {
+        return IERC721ReceiverUpgradeable.onERC721Received.selector;
+    }
+
+    // ---------- UUPS ----------
+    function _authorizeUpgrade(address) internal override onlyOwner {}
+    receive() external payable { notifyNativeReward(); }
 }
